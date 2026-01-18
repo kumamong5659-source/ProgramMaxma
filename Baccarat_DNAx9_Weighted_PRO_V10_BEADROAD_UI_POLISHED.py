@@ -1,0 +1,248 @@
+
+# -*- coding: utf-8 -*-
+# Baccarat DNA x,/ 9 Systems PRO V10
+# - เพิ่มจำนวน P / B / T / TOTAL แสดงบนแถบด้านบน
+# - คงทุกฟีเจอร์จาก V9
+
+import tkinter as tk
+
+ROWS, COLS, CELL = 6, 40, 22
+MAX_MARK = 14
+
+class BigRoad:
+    def __init__(self): self.reset()
+    def reset(self):
+        self.grid=[['' for _ in range(COLS)] for _ in range(ROWS)]
+        self.c=0; self.r=0; self.last=None
+    def add(self,v):
+        if self.last is None:
+            self.grid[0][0]=v; self.last=v; return
+        if v==self.last:
+            if self.r+1<ROWS and self.grid[self.r+1][self.c]=='':
+                self.r+=1
+            else:
+                self.c+=1; self.r=0
+        else:
+            self.c+=1; self.r=0
+        if self.c>=COLS:
+            for rr in range(ROWS):
+                self.grid[rr]=self.grid[rr][1:]+['']
+            self.c=COLS-1
+        self.grid[self.r][self.c]=v; self.last=v
+
+# DNA systems
+def dna_follow(h): return h[-1] if h else None
+def dna_oppo(h): return 'B' if h and h[-1]=='P' else 'P'
+def dna_2same(h): return h[-1] if len(h)>=2 and h[-1]==h[-2] else dna_oppo(h)
+def dna_chop(h): return 'P' if len(h)%2==0 else 'B'
+def dna_run3(h): return h[-1] if len(h)>=3 and h[-1]==h[-2]==h[-3] else dna_oppo(h)
+def dna_balance(h): return 'P' if h.count('P')<=h.count('B') else 'B' if h else None
+def dna_last5(h): return 'P' if len(h)>=5 and h[-5:].count('P')>h[-5:].count('B') else 'B' if len(h)>=5 else None
+def dna_cutrun(h):
+    if len(h)>=4 and len(set(h[-4:]))==1: return 'B' if h[-1]=='P' else 'P'
+    return dna_follow(h)
+def dna_trend(h): return 'P' if len(h)>=6 and h[-6:].count('P')>h[-6:].count('B') else 'B' if len(h)>=6 else None
+
+SYSTEMS=[
+    ("DNA x",dna_follow),("DNA ,",dna_oppo),("DNA 2",dna_2same),
+    ("DNA /",dna_chop),("DNA 3",dna_run3),("DNA =",dna_balance),
+    ("DNA 5",dna_last5),("DNA C",dna_cutrun),("DNA T",dna_trend),
+]
+
+
+class BeadRoad:
+    def __init__(self, rows=6, cols=40):
+        self.rows=rows; self.cols=cols
+        self.reset()
+    def reset(self):
+        self.grid=[]
+    def add(self,v):
+        if v not in ("P","B","T"): return
+        self.grid.append(v)
+
+
+class Engine:
+    def __init__(self):
+        self.h=[]
+        self.play=[0]*9
+        self.win=[0]*9
+        self.mark=[[] for _ in range(9)]
+
+    def predict(self):
+        return [f(self.h) for _,f in SYSTEMS]
+
+    def update(self,v):
+        preds=self.predict()
+        self.h.append(v)
+        for i,p in enumerate(preds):
+            if not p: continue
+            self.play[i]+=1
+            if p==v:
+                self.win[i]+=1; self.mark[i].append("/")
+            else:
+                self.mark[i].append("x")
+            if len(self.mark[i])>MAX_MARK:
+                self.mark[i].pop(0)
+
+    def pair(self,i):
+        if self.play[i]==0: return (0,0,0)
+        p=int(self.win[i]/self.play[i]*100)
+        return (p,100-p,max(p,100-p))
+
+class App:
+    def __init__(self,root):
+        self.root=root; self.blink=True
+        root.title("Baccarat DNA x,/ 9 Systems PRO V10")
+        root.configure(bg="#020617")
+
+        self.eng=Engine(); self.big=BigRoad(); self.bead=BeadRoad()
+
+        # ===== TOP BAR =====
+        top=tk.Frame(root,bg="#020617",height=64,highlightthickness=0)
+        top.pack(fill="x")
+
+        self.bet_bar=tk.Label(
+            top,text="P 0 / B 0",
+            font=("Segoe UI Semibold",18),
+            fg="white",bg="#0f172a",
+            width=18,anchor="w",padx=12
+        )
+        self.bet_bar.pack(side="left",padx=10,pady=10)
+
+        self.count_bar=tk.Label(
+            top,text="P=0  B=0  T=0  TOTAL=0",
+            font=("Segoe UI",11,"bold"),
+            fg="#e5e7eb",bg="#020617"
+        )
+        self.count_bar.pack(side="left",padx=15)
+
+        btns=tk.Frame(top,bg="#020617")
+        btns.pack(side="right",padx=10)
+        for t in ("P","B","T","UNDO","CLEAR"):
+            tk.Button(btns,text=t,width=8,relief="flat",bg="#1e293b",fg="white",activebackground="#334155",activeforeground="white",
+                      command=lambda x=t:self.play(x)).pack(side="left",padx=4)
+
+        # ===== BODY =====
+        body=tk.Frame(root,bg="#0b1220")
+        body.pack(fill="both",expand=True)
+
+        left=tk.Frame(body,bg="#020617")
+        left.pack(side="left",padx=10,pady=5)
+
+        self.rows=[]
+        for name,_ in SYSTEMS:
+            f=tk.Frame(left,bg="#020617"); f.pack(anchor="w",fill="x",pady=2)
+            if "x" in name: fg="#dc2626"
+            elif "/" in name: fg="#16a34a"
+            else: fg="#93c5fd"
+
+            tk.Label(f,text=name,width=7,fg=fg,bg="#0b1220").pack(side="left")
+            bet=tk.Label(f,text="-",width=3,fg="white",bg="#0b1220")
+            bet.pack(side="left")
+            pair=tk.Label(f,text="P0 / B0",width=12,fg="white",bg="#0b1220")
+            pair.pack(side="left")
+            hist=tk.Frame(f,bg="#0b1220"); hist.pack(side="left",padx=6)
+            self.rows.append((f,bet,pair,hist))
+
+        self.cv=tk.Canvas(body,width=COLS*CELL//2,height=ROWS*CELL//2,bg="black",highlightthickness=1,highlightbackground="#1f2937")
+        self.bead_cv=tk.Canvas(body,width=COLS*CELL//2,height=ROWS*CELL//2,bg="#f8fafc",highlightthickness=1,highlightbackground="#cbd5f5")
+        self.cv.pack(side="right",padx=10,pady=10)
+        self.bead_cv.pack(side="right",padx=10,pady=10)
+
+        self.loop()
+
+    def loop(self):
+        self.blink=not self.blink
+        self.render()
+        self.root.after(600,self.loop)
+
+    def play(self,v):
+        if v=="CLEAR":
+            self.eng=Engine(); self.big.reset(); self.bead.reset(); return
+        if v=="UNDO":
+            if self.eng.h:
+                self.eng.h.pop()
+                self.big.reset()
+                self.bead.reset()
+                for x in self.eng.h:
+                    self.big.add(x)
+                    self.bead.add(x)
+            return
+        if v=="T":
+            self.eng.h.append("T")
+            self.bead.add("T")
+            return
+        self.eng.update(v); self.big.add(v); self.bead.add(v)
+
+    def render(self):
+        preds=self.eng.predict()
+
+        # counts
+        p_count=self.eng.h.count("P")
+        b_count=self.eng.h.count("B")
+        t_count=self.eng.h.count("T")
+        total=len(self.eng.h)
+        self.count_bar.config(
+            text=f"P={p_count}  B={b_count}  T={t_count}  TOTAL={total}"
+        )
+
+        sumP=sum(self.eng.pair(i)[0] for i,p in enumerate(preds) if p=="P")
+        sumB=sum(self.eng.pair(i)[1] for i,p in enumerate(preds) if p=="B")
+        totalw=sumP+sumB if sumP+sumB else 1
+        p_pct=int(sumP/totalw*100); b_pct=100-p_pct
+
+        if p_pct>=b_pct:
+            bg="#16a34a" if self.blink else "#14532d"
+        else:
+            bg="#dc2626" if self.blink else "#7f1d1d"
+        self.bet_bar.config(text=f"P {p_pct} / B {b_pct}",bg=bg)
+
+        bests=[self.eng.pair(i)[2] for i in range(9)]
+        maxbest=max(bests) if bests else 0
+
+        for i,(row,bet,pairlbl,hist) in enumerate(self.rows):
+            bet.config(text=preds[i] or "-",
+                       fg="#22d3ee" if preds[i]=="P" else "#f87171")
+            p,b,best=self.eng.pair(i)
+            pairlbl.config(text=f"P {p} / B {b}")
+
+            if best==maxbest and best>0:
+                row_bg="#16a34a" if preds[i]=="P" else "#dc2626"
+                if not self.blink:
+                    row_bg="#14532d" if preds[i]=="P" else "#7f1d1d"
+                row.config(bg=row_bg); bet.config(bg=row_bg)
+                pairlbl.config(bg=row_bg); hist.config(bg=row_bg)
+            else:
+                row.config(bg="#0b1220"); bet.config(bg="#0b1220")
+                pairlbl.config(bg="#0b1220"); hist.config(bg="#0b1220")
+
+            for w in hist.winfo_children(): w.destroy()
+            for m in self.eng.mark[i]:
+                c="#16a34a" if m=="/" else "#dc2626"
+                tk.Label(hist,text=m,fg=c,bg=hist["bg"]).pack(side="left")
+
+        self.cv.delete("all")
+        for r in range(ROWS):
+            for c in range(COLS):
+                v=self.big.grid[r][c]
+                if v in ("P","B"):
+                    col="#22d3ee" if v=="P" else "#f87171"
+                    x=c*CELL//2+CELL//4; y=r*CELL//2+CELL//4
+                    rad=CELL//4-2
+                    self.cv.create_oval(x-rad,y-rad,x+rad,y+rad,outline=col,width=2)
+
+        # ===== Bead Road =====
+        self.bead_cv.delete("all")
+        for i,v in enumerate(self.bead.grid):
+            r=i%ROWS; c=i//ROWS
+            if c>=COLS: break
+            x=c*CELL//2+CELL//4; y=r*CELL//2+CELL//4
+            if v=="P": col="#3b82f6"
+            elif v=="B": col="#ef4444"
+            else: col="#22c55e"
+            self.bead_cv.create_oval(x-8,y-8,x+8,y+8,fill=col,outline=col)
+            self.bead_cv.create_text(x,y,text=v,fill="white",font=("Segoe UI",9,"bold"))
+
+
+if __name__=="__main__":
+    root=tk.Tk(); App(root); root.mainloop()
